@@ -32,14 +32,8 @@ export default async function handler(req, res) {
       return json(res, 400, { ok: false, error: 'User ID and password are required.' });
     }
 
-    // Ensure the PostgreSQL crypto extension used by dashboard_users.password_hash
-    // is available. This is safe to run repeatedly and fixes new Neon databases
-    // where pgcrypto was not enabled yet.
-    await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
-
-    // Passwords are stored as pgcrypto crypt() hashes (bcrypt via gen_salt('bf')).
-    // Compare the supplied password against the stored hash inside PostgreSQL;
-    // the hash itself is never returned to the browser.
+    // pgcrypto must already be enabled because dashboard_users.password_hash
+    // is created with crypt(). Do not run CREATE EXTENSION during login.
     const rows = await sql`
       SELECT id, user_id
       FROM dashboard_users
