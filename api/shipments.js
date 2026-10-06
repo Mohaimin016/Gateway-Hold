@@ -97,8 +97,16 @@ export default async function handler(req, res) {
       if (!Array.isArray(incoming)) return json(res, 400, { error: 'Expected {"shipments":[...]}.' });
       if (incoming.length > 5000) return json(res, 413, { error: 'Maximum 5,000 shipments per request.' });
 
-      const rows = incoming.map(normalize).filter(r => r.awb);
-      if (!rows.length) return json(res, 400, { error: 'No valid shipment rows with AWB were supplied.' });
+      const normalizedRows = incoming.map(normalize).filter(r => r.awb);
+      if (!normalizedRows.length) return json(res, 400, { error: 'No valid shipment rows with AWB were supplied.' });
+
+      // PostgreSQL ON CONFLICT DO UPDATE requires the proposed rows to be unique
+      // on the conflict key. Excel exports can occasionally contain the same AWB
+      // more than once, so keep the last occurrence for a deterministic upsert.
+      const byAwb = new Map();
+      for (const row of normalizedRows) byAwb.set(String(row.awb), row);
+      const rows = Array.from(byAwb.values());
+      const deduplicated = normalizedRows.length - rows.length;
 
       // Batch the whole request into one SQL statement to avoid one database round-trip per shipment.
       const payload = JSON.stringify(rows);
@@ -147,7 +155,7 @@ export default async function handler(req, res) {
           updated_at = CURRENT_TIMESTAMP
       `;
       const upserted = rows.length;
-      return json(res, 200, { ok: true, upserted });
+      return json(res, 200, { ok: true, received: incoming.length, valid: normalizedRows.length, deduplicated, upserted });
     }
 
     return json(res, 405, { error: 'Method not allowed.' });
