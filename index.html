@@ -2346,15 +2346,45 @@ function toNeonShipmentRow(r){
 }
 
 async function upsertShipmentsToNeon(rows){
-  if(!NEON_CONFIG.apiBaseUrl) return false;
-  const url=NEON_CONFIG.apiBaseUrl + NEON_CONFIG.bulkUpsertPath;
-  const res=await fetch(url,{
-    method:"POST",
-    headers:{"Content-Type":"application/json","Accept":"application/json",...(NEON_CONFIG.apiKey?{"X-API-Key":NEON_CONFIG.apiKey}: {})},
-    body:JSON.stringify({shipments:rows.map(toNeonShipmentRow)})
-  });
-  if(!res.ok) throw new Error("Shipment API returned HTTP "+res.status);
-  return true;
+  if(!NEON_CONFIG.apiBaseUrl) return {ok:false,received:0,valid:0,upserted:0};
+  const source=Array.isArray(rows)?rows:[];
+  const CHUNK=500;
+  let received=0,valid=0,deduplicated=0,upserted=0;
+  for(let i=0;i<source.length;i+=CHUNK){
+    const batch=source.slice(i,i+CHUNK);
+    const url=NEON_CONFIG.apiBaseUrl + NEON_CONFIG.bulkUpsertPath;
+    const res=await fetch(url,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Accept":"application/json",...(NEON_CONFIG.apiKey?{"X-API-Key":NEON_CONFIG.apiKey}: {})},
+      body:JSON.stringify({shipments:batch.map(toNeonShipmentRow)})
+    });
+    if(!res.ok) throw new Error("Shipment API returned HTTP "+res.status+" while uploading batch "+(Math.floor(i/CHUNK)+1));
+    const result=await res.json();
+    received+=Number(result.received||0);
+    valid+=Number(result.valid||0);
+    deduplicated+=Number(result.deduplicated||0);
+    upserted+=Number(result.upserted||0);
+    setDataSourceStatus(`Data: Syncing Neon… ${Math.min(i+batch.length,source.length)}/${source.length}`,"loading");
+  }
+  return {ok:true,received,valid,deduplicated,upserted};
+}
+async function verifyUploadedShipmentsInNeon(rows){
+  const source=Array.isArray(rows)?rows:[];
+  const expected=[...new Set(source.map(r=>String(r.awb||"").trim()).filter(Boolean))];
+  if(!expected.length) return {ok:true,expected:0,found:0,missing:[]};
+  const dates=source.map(r=>dateOnly(r.pickup_date)).filter(Boolean).sort();
+  const from=dates[0]||"";
+  const to=dates[dates.length-1]||from;
+  const params=new URLSearchParams({limit:"20000"});
+  if(from) params.set("from",from);
+  if(to) params.set("to",to);
+  const res=await fetch(NEON_CONFIG.apiBaseUrl + NEON_CONFIG.shipmentsPath + "?" + params.toString(),{method:"GET",cache:"no-store",headers:{"Accept":"application/json"}});
+  if(!res.ok) throw new Error("Unable to verify uploaded AWBs. Shipment API returned HTTP "+res.status);
+  const payload=await res.json();
+  const returned=Array.isArray(payload)?payload:(payload.shipments||payload.data||payload.rows||[]);
+  const foundSet=new Set(returned.map(r=>String(r.awb||"").trim()).filter(Boolean));
+  const missing=expected.filter(a=>!foundSet.has(a));
+  return {ok:missing.length===0,expected:expected.length,found:expected.length-missing.length,missing};
 }
 
 async function initializeShipmentData(){
@@ -2573,11 +2603,25 @@ async function loadUploadedWorkbook(file){
       if(NEON_CONFIG.apiBaseUrl){
         try{
           setDataSourceStatus("Data: Syncing Neon…","loading");
-          await upsertShipmentsToNeon(mapped);
+          const uploadResult=await upsertShipmentsToNeon(mapped);
+          if(!uploadResult.ok || uploadResult.upserted < uploadResult.valid){
+            throw new Error(`Neon accepted only ${uploadResult.upserted} of ${uploadResult.valid} valid AWBs from this upload.`);
+          }
+          let verification=await verifyUploadedShipmentsInNeon(mapped);
+          if(!verification.ok){
+            console.warn("Neon upload verification found missing AWBs:",verification.missing.length);
+            const missingSet=new Set(verification.missing);
+            const retryRows=mapped.filter(r=>missingSet.has(String(r.awb||"").trim()));
+            if(retryRows.length) await upsertShipmentsToNeon(retryRows);
+            verification=await verifyUploadedShipmentsInNeon(mapped);
+          }
+          if(!verification.ok){
+            throw new Error(`Upload verification failed: ${verification.found} of ${verification.expected} AWBs are in Neon; ${verification.missing.length} are still missing.`);
+          }
           const refreshed=await loadShipmentsFromNeon();
           if(!refreshed) throw new Error("Neon sync completed but refreshed shipment data could not be loaded.");
           $("uploadLabel").textContent=file.name;
-          if(typeof showUploadSuccess==="function") showUploadSuccess(file.name,DATA.length,"Neon shipment database");
+          if(typeof showUploadSuccess==="function") showUploadSuccess(file.name,verification.found,"Neon shipment database");
           return;
         }catch(syncErr){
           console.error("Neon Excel sync:",syncErr);
