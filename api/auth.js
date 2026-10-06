@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return json(res, 405, { error: 'Method not allowed.' });
+    return json(res, 405, { ok: false, error: 'Method not allowed.' });
   }
 
   try {
@@ -32,11 +32,21 @@ export default async function handler(req, res) {
       return json(res, 400, { ok: false, error: 'User ID and password are required.' });
     }
 
+    // Ensure the PostgreSQL crypto extension used by dashboard_users.password_hash
+    // is available. This is safe to run repeatedly and fixes new Neon databases
+    // where pgcrypto was not enabled yet.
+    await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+
+    // Passwords are stored as pgcrypto crypt() hashes (bcrypt via gen_salt('bf')).
+    // Compare the supplied password against the stored hash inside PostgreSQL;
+    // the hash itself is never returned to the browser.
     const rows = await sql`
       SELECT id, user_id
       FROM dashboard_users
-      WHERE LOWER(user_id) = LOWER(${userId})
-        AND active = TRUE
+      WHERE LOWER(TRIM(user_id)) = LOWER(TRIM(${userId}))
+        AND COALESCE(active, TRUE) = TRUE
+        AND password_hash IS NOT NULL
+        AND password_hash <> ''
         AND password_hash = crypt(${password}, password_hash)
       LIMIT 1
     `;
@@ -50,7 +60,7 @@ export default async function handler(req, res) {
       user: { id: rows[0].id, userId: rows[0].user_id }
     });
   } catch (err) {
-    console.error(err);
+    console.error('Dashboard authentication error:', err);
     return json(res, 500, {
       ok: false,
       error: 'Authentication service is unavailable.'
