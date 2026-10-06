@@ -2372,21 +2372,29 @@ async function verifyUploadedShipmentsInNeon(rows){
   const source=Array.isArray(rows)?rows:[];
   const expected=[...new Set(source.map(r=>String(r.awb||"").trim()).filter(Boolean))];
   if(!expected.length) return {ok:true,expected:0,found:0,missing:[]};
-  const dates=source.map(r=>dateOnly(r.pickup_date)).filter(Boolean).sort();
-  const from=dates[0]||"";
-  const to=dates[dates.length-1]||from;
-  const params=new URLSearchParams({limit:"20000"});
-  if(from) params.set("from",from);
-  if(to) params.set("to",to);
-  const res=await fetch(NEON_CONFIG.apiBaseUrl + NEON_CONFIG.shipmentsPath + "?" + params.toString(),{method:"GET",cache:"no-store",headers:{"Accept":"application/json"}});
-  if(!res.ok) throw new Error("Unable to verify uploaded AWBs. Shipment API returned HTTP "+res.status);
-  const payload=await res.json();
-  const returned=Array.isArray(payload)?payload:(payload.shipments||payload.data||payload.rows||[]);
-  const foundSet=new Set(returned.map(r=>String(r.awb||"").trim()).filter(Boolean));
+
+  // Verify exact AWBs in small batches. Do not verify by date range because
+  // the API intentionally caps normal GET responses at 20,000 rows.
+  const foundSet=new Set();
+  const CHUNK=1000;
+  for(let i=0;i<expected.length;i+=CHUNK){
+    const batch=expected.slice(i,i+CHUNK);
+    const params=new URLSearchParams({awbs:batch.join(","),limit:String(CHUNK)});
+    const res=await fetch(NEON_CONFIG.apiBaseUrl + NEON_CONFIG.shipmentsPath + "?" + params.toString(),{
+      method:"GET",cache:"no-store",headers:{"Accept":"application/json"}
+    });
+    if(!res.ok) throw new Error("Unable to verify uploaded AWBs. Shipment API returned HTTP "+res.status);
+    const payload=await res.json();
+    const returned=Array.isArray(payload)?payload:(payload.shipments||payload.data||payload.rows||[]);
+    returned.forEach(r=>{
+      const awb=String(r.awb||"").trim();
+      if(awb) foundSet.add(awb);
+    });
+  }
+
   const missing=expected.filter(a=>!foundSet.has(a));
   return {ok:missing.length===0,expected:expected.length,found:expected.length-missing.length,missing};
 }
-
 async function initializeShipmentData(){
   setDataSourceStatus(NEON_CONFIG.apiBaseUrl ? "Data: Loading Neon…" : "Data: Local","loading");
   const loaded=await loadShipmentsFromNeon();
