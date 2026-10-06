@@ -2599,7 +2599,7 @@ async function loadUploadedWorkbook(file){
   const reader=new FileReader();
   reader.onload=async e=>{
     try{
-      const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array",cellDates:true});
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array",cellDates:false});
       const preferred=["Data","data","Sheet1"].find(n=>wb.SheetNames.includes(n)) || wb.SheetNames[0];
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[preferred],{defval:"",raw:true});
       const mapped=mapUploadedRows(rows);
