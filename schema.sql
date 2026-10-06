@@ -25,3 +25,18 @@ CREATE INDEX IF NOT EXISTS idx_shipments_flight ON shipments(flight_name);
 CREATE INDEX IF NOT EXISTS idx_shipments_awb ON shipments(awb);
 CREATE INDEX IF NOT EXISTS idx_shipments_gateway_in ON shipments(gateway_in);
 CREATE INDEX IF NOT EXISTS idx_shipments_gateway_out ON shipments(gateway_out);
+
+
+-- Dashboard users (passwords are stored as one-way pgcrypto hashes)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS dashboard_users (
+    id BIGSERIAL PRIMARY KEY,
+    user_id VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dashboard_users_user_id ON dashboard_users(user_id);
