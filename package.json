@@ -1,0 +1,10 @@
+{
+  "name": "fedex-neon-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@neondatabase/serverless": "latest"
+  }
+}

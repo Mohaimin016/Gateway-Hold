@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "api/**/*.js": { "runtime": "nodejs20.x" }
+  },
+  "rewrites": [
+    { "source": "/shipments", "destination": "/api/shipments" },
+    { "source": "/shipments/bulk-upsert", "destination": "/api/shipments" }
+  ]
+}
