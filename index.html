@@ -2612,8 +2612,8 @@ async function loadUploadedWorkbook(file){
         try{
           setDataSourceStatus("Data: Syncing Neon…","loading");
           const uploadResult=await upsertShipmentsToNeon(mapped);
-          if(!uploadResult.ok || uploadResult.upserted < uploadResult.valid){
-            throw new Error(`Neon accepted only ${uploadResult.upserted} of ${uploadResult.valid} valid AWBs from this upload.`);
+          if(!uploadResult.ok){
+            throw new Error(`Neon synchronization failed for this upload.`);
           }
           let verification=await verifyUploadedShipmentsInNeon(mapped);
           if(!verification.ok){
