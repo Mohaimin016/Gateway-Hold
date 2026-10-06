@@ -3520,22 +3520,33 @@ document.addEventListener("click",function(e){
 
 <script>
 (function(){
-  // Set these only for a temporary local/demo login. For real deployment,
-  // validate credentials through the Neon/API backend instead of embedding them here.
-  const LOGIN_CONFIG = { enabled: true, userId: "mohaimin.siddike@bdexpress.com", password: "Muhammad@0177" };
   const gate=document.getElementById("loginGate"), form=document.getElementById("loginForm"), id=document.getElementById("loginId"), pw=document.getElementById("loginPassword"), err=document.getElementById("loginError"), eye=document.getElementById("loginEye"), remember=document.getElementById("rememberLogin");
   if(!gate||!form) return;
   const sessionKey="fedexOpsLogin";
   function unlock(){ gate.style.display="none"; gate.setAttribute("aria-hidden","true"); document.body.classList.add("authenticated"); }
   if(sessionStorage.getItem(sessionKey)==="1" || localStorage.getItem(sessionKey)==="1") unlock();
   eye.addEventListener("click",()=>{ const show=pw.type==="password"; pw.type=show?"text":"password"; eye.textContent=show?"◉":"◌"; eye.setAttribute("aria-label",show?"Hide password":"Show password"); });
-  form.addEventListener("submit",e=>{
+  form.addEventListener("submit",async e=>{
     e.preventDefault(); err.textContent="";
-    if(!LOGIN_CONFIG.userId || !LOGIN_CONFIG.password){ err.textContent="Login credentials are not configured yet."; return; }
-    if(id.value.trim()===LOGIN_CONFIG.userId && pw.value===LOGIN_CONFIG.password){
+    const userId=id.value.trim(), password=pw.value;
+    if(!userId || !password){ err.textContent="Enter your User ID and password."; return; }
+    const btn=form.querySelector(".login-btn");
+    const originalText=btn ? btn.textContent : "";
+    if(btn){ btn.disabled=true; btn.textContent="Signing In…"; }
+    try{
+      const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({userId,password})});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok || !data.ok) throw new Error(data.error || "Invalid User ID or password.");
       if(remember.checked) localStorage.setItem(sessionKey,"1"); else sessionStorage.setItem(sessionKey,"1");
       unlock();
-    }else{ err.textContent="Invalid User ID or password."; pw.value=""; pw.focus(); }
+      pw.value="";
+    }catch(error){
+      err.textContent=error.message || "Unable to sign in.";
+      pw.value="";
+      pw.focus();
+    }finally{
+      if(btn){ btn.disabled=false; btn.textContent=originalText; }
+    }
   });
 })();
 </script>
