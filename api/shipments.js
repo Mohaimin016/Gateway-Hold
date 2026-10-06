@@ -100,39 +100,53 @@ export default async function handler(req, res) {
       const rows = incoming.map(normalize).filter(r => r.awb);
       if (!rows.length) return json(res, 400, { error: 'No valid shipment rows with AWB were supplied.' });
 
-      let upserted = 0;
-      for (const r of rows) {
-        await sql`
-          INSERT INTO shipments (
-            awb, flight_name, customer_name, wsc, wt, shipper_type, ship_type,
-            pickup_date, stat_77, gateway_in, gateway_out, delivered,
-            genesis_ok, genesis_status, gateway, updated_at
-          ) VALUES (
-            ${r.awb}, ${r.flight_name}, ${r.customer_name}, ${r.wsc}, ${r.wt},
-            ${r.shipper_type}, ${r.ship_type}, ${r.pickup_date}, ${r.stat_77},
-            ${r.gateway_in}, ${r.gateway_out}, ${r.delivered}, ${r.genesis_ok},
-            ${r.genesis_status}, ${r.gateway}, CURRENT_TIMESTAMP
-          )
-          ON CONFLICT (awb) DO UPDATE SET
-            flight_name = EXCLUDED.flight_name,
-            customer_name = EXCLUDED.customer_name,
-            wsc = EXCLUDED.wsc,
-            wt = EXCLUDED.wt,
-            shipper_type = EXCLUDED.shipper_type,
-            ship_type = EXCLUDED.ship_type,
-            pickup_date = EXCLUDED.pickup_date,
-            stat_77 = EXCLUDED.stat_77,
-            gateway_in = EXCLUDED.gateway_in,
-            gateway_out = EXCLUDED.gateway_out,
-            delivered = EXCLUDED.delivered,
-            genesis_ok = EXCLUDED.genesis_ok,
-            genesis_status = EXCLUDED.genesis_status,
-            gateway = EXCLUDED.gateway,
-            updated_at = CURRENT_TIMESTAMP
-        `;
-        upserted++;
-      }
-
+      // Batch the whole request into one SQL statement to avoid one database round-trip per shipment.
+      const payload = JSON.stringify(rows);
+      await sql`
+        INSERT INTO shipments (
+          awb, flight_name, customer_name, wsc, wt, shipper_type, ship_type,
+          pickup_date, stat_77, gateway_in, gateway_out, delivered,
+          genesis_ok, genesis_status, gateway, updated_at
+        )
+        SELECT
+          x.awb, x.flight_name, x.customer_name, x.wsc, x.wt, x.shipper_type, x.ship_type,
+          x.pickup_date, x.stat_77, x.gateway_in, x.gateway_out, x.delivered,
+          x.genesis_ok, x.genesis_status, x.gateway, CURRENT_TIMESTAMP
+        FROM jsonb_to_recordset(${payload}::jsonb) AS x(
+          awb text,
+          flight_name text,
+          customer_name text,
+          wsc text,
+          wt numeric,
+          shipper_type text,
+          ship_type text,
+          pickup_date timestamp,
+          stat_77 timestamp,
+          gateway_in timestamp,
+          gateway_out timestamp,
+          delivered timestamp,
+          genesis_ok boolean,
+          genesis_status text,
+          gateway text
+        )
+        ON CONFLICT (awb) DO UPDATE SET
+          flight_name = EXCLUDED.flight_name,
+          customer_name = EXCLUDED.customer_name,
+          wsc = EXCLUDED.wsc,
+          wt = EXCLUDED.wt,
+          shipper_type = EXCLUDED.shipper_type,
+          ship_type = EXCLUDED.ship_type,
+          pickup_date = EXCLUDED.pickup_date,
+          stat_77 = EXCLUDED.stat_77,
+          gateway_in = EXCLUDED.gateway_in,
+          gateway_out = EXCLUDED.gateway_out,
+          delivered = EXCLUDED.delivered,
+          genesis_ok = EXCLUDED.genesis_ok,
+          genesis_status = EXCLUDED.genesis_status,
+          gateway = EXCLUDED.gateway,
+          updated_at = CURRENT_TIMESTAMP
+      `;
+      const upserted = rows.length;
       return json(res, 200, { ok: true, upserted });
     }
 
