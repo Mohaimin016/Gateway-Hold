@@ -65,7 +65,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const {
-        gateway, flight, from, to, awb,
+        gateway, flight, from, to, awb, awbs,
         limit = '10000', offset = '0'
       } = req.query || {};
 
@@ -80,7 +80,10 @@ export default async function handler(req, res) {
         FROM shipments
         WHERE (${gateway || null}::text IS NULL OR gateway = ${gateway || null})
           AND (${flight || null}::text IS NULL OR flight_name = ${flight || null})
-          AND (${awb || null}::text IS NULL OR awb = ${awb || null})
+          AND (
+            (${awbs || null}::text IS NULL AND (${awb || null}::text IS NULL OR awb = ${awb || null}))
+            OR (${awbs || null}::text IS NOT NULL AND awb = ANY(string_to_array(${awbs || null}, ',')))
+          )
           AND (${from || null}::date IS NULL OR pickup_date >= ${from || null}::date)
           AND (${to || null}::date IS NULL OR pickup_date < (${to || null}::date + INTERVAL '1 day'))
         ORDER BY pickup_date NULLS LAST, awb
