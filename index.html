@@ -219,12 +219,18 @@ button{color:inherit}
 .search{width:285px;gap:9px}
 .search input{width:100%;border:0;outline:0;background:transparent;color:#fff;font-size:12px}
 .search input::placeholder{color:#8795b7}
-.bell{width:44px;justify-content:center;position:relative;font-size:19px}
-.badge{position:absolute;right:5px;top:3px;width:15px;height:15px;border-radius:50%;font-size:9px;
-display:grid;place-items:center;background:#f23b6e;color:#fff}
-.user{gap:9px;font-size:12px;padding-right:10px}
-.avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;
+.bell,.user{border:1px solid rgba(104,133,216,.55);cursor:pointer;outline:0}
+.bell{width:44px;min-width:44px;justify-content:center;position:relative;padding:0}
+.bell:hover,.user:hover{border-color:rgba(126,151,255,.85);background:rgba(13,28,58,.9)}
+.topbar-icon{width:19px;height:19px;fill:none;stroke:#dce6ff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.badge{position:absolute;right:2px;top:1px;width:16px;height:16px;border-radius:50%;font-size:9px;
+display:grid;place-items:center;background:#f23b6e;color:#fff;font-weight:800;border:2px solid #101a2e}
+.user{width:112px;min-width:112px;justify-content:flex-start;gap:9px;font-size:12px;padding:0 10px 0 8px}
+.avatar{width:34px;height:34px;min-width:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;
 background:linear-gradient(135deg,#3e71ff,#5e35e8);box-shadow:0 0 18px rgba(65,108,255,.45)}
+.user-name{flex:1;text-align:left;color:#e4ebff}
+.user-chevron{width:15px;height:15px;fill:none;stroke:#b9c7e8;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
+.user[aria-expanded="true"] .user-chevron{transform:rotate(180deg)}
 
 /* heading */
 .heading{display:flex;justify-content:space-between;align-items:end;margin:8px 0 18px}
@@ -2142,8 +2148,14 @@ body.dark-neumorphic .user{
 </select>
 </div>
 <div class="control search">⌕ <input id="search" placeholder="Search AWB / Customer / Flight ..."/></div>
-<div class="control bell">♧<span class="badge">1</span></div>
-<div class="control user"><span class="avatar">N</span><span>User</span>⌄</div>
+<button class="control bell" id="notificationButton" type="button" aria-label="Notifications">
+  <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+  <span class="badge">1</span>
+</button>
+<button class="control user" id="userMenuButton" type="button" aria-label="User menu" aria-haspopup="menu" aria-expanded="false">
+  <span class="avatar">N</span><span class="user-name">User</span>
+  <svg class="user-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7 5 5 5-5"/></svg>
+</button>
 </div>
 <div class="heading">
 <div><h1>Operations Overview</h1><p>Interactive FedEx shipment verification and delivery performance</p></div>
