@@ -231,6 +231,16 @@ background:linear-gradient(135deg,#3e71ff,#5e35e8);box-shadow:0 0 18px rgba(65,1
 .user-name{flex:1;text-align:left;color:#e4ebff}
 .user-chevron{width:15px;height:15px;fill:none;stroke:#b9c7e8;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
 .user[aria-expanded="true"] .user-chevron{transform:rotate(180deg)}
+.user-menu-wrap{position:relative}
+.user-dropdown{position:absolute;right:0;top:calc(100% + 8px);min-width:235px;padding:8px;border:1px solid rgba(104,133,216,.55);
+border-radius:14px;background:rgba(6,15,36,.97);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+box-shadow:0 18px 45px rgba(0,0,0,.38);z-index:2000;display:none}
+.user-menu-wrap.open .user-dropdown{display:block}
+.user-dropdown-user{padding:8px 10px 10px;color:#aab6d1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+border-bottom:1px solid rgba(104,133,216,.22);margin-bottom:5px}
+.user-logout{width:100%;height:38px;border:0;border-radius:10px;background:transparent;color:#ff8da8;
+text-align:left;padding:0 10px;font:inherit;font-size:12px;cursor:pointer}
+.user-logout:hover{background:rgba(242,59,110,.12);color:#fff}
 
 /* heading */
 .heading{display:flex;justify-content:space-between;align-items:end;margin:8px 0 18px}
@@ -2152,10 +2162,16 @@ body.dark-neumorphic .user{
   <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
   <span class="badge">1</span>
 </button>
+<div class="user-menu-wrap" id="userMenuWrap">
 <button class="control user" id="userMenuButton" type="button" aria-label="User menu" aria-haspopup="menu" aria-expanded="false">
   <span class="avatar" id="loggedInUserAvatar">U</span><span class="user-name" id="loggedInUserName">User</span>
   <svg class="user-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7 5 5 5-5"/></svg>
 </button>
+<div class="user-dropdown" id="userDropdown" role="menu">
+  <div class="user-dropdown-user" id="userDropdownUser">User</div>
+  <button class="user-logout" id="logoutBtn" type="button" role="menuitem">↪&nbsp; Logout</button>
+</div>
+</div>
 </div>
 <div class="heading">
 <div><h1>Operations Overview</h1><p>Interactive FedEx shipment verification and delivery performance</p></div>
@@ -3545,6 +3561,7 @@ document.addEventListener("click",function(e){
     if(userNameEl) userNameEl.textContent=name;
     const local=raw.split("@")[0].trim();
     if(userAvatarEl) userAvatarEl.textContent=(local.charAt(0)||"U").toUpperCase();
+    syncUserMenu(raw);
   }
   function getStoredUser(){
     return sessionStorage.getItem(userSessionKey) || localStorage.getItem(userSessionKey) || "";
@@ -3566,6 +3583,41 @@ document.addEventListener("click",function(e){
     sessionStorage.removeItem(sessionKey);
     localStorage.removeItem(sessionKey);
   }
+  const userMenuWrap=document.getElementById("userMenuWrap");
+  const userMenuButton=document.getElementById("userMenuButton");
+  const userDropdownUser=document.getElementById("userDropdownUser");
+  const logoutBtn=document.getElementById("logoutBtn");
+  function syncUserMenu(userId){
+    const raw=String(userId||getStoredUser()).trim();
+    if(userDropdownUser) userDropdownUser.textContent=raw||"User";
+  }
+  function closeUserMenu(){
+    if(userMenuWrap) userMenuWrap.classList.remove("open");
+    if(userMenuButton) userMenuButton.setAttribute("aria-expanded","false");
+  }
+  function toggleUserMenu(){
+    if(!userMenuWrap) return;
+    const open=!userMenuWrap.classList.contains("open");
+    userMenuWrap.classList.toggle("open",open);
+    if(userMenuButton) userMenuButton.setAttribute("aria-expanded",open?"true":"false");
+    if(open) syncUserMenu();
+  }
+  if(userMenuButton) userMenuButton.addEventListener("click",e=>{e.stopPropagation();toggleUserMenu();});
+  if(logoutBtn) logoutBtn.addEventListener("click",()=>{
+    sessionStorage.removeItem(sessionKey);
+    localStorage.removeItem(sessionKey);
+    sessionStorage.removeItem(userSessionKey);
+    localStorage.removeItem(userSessionKey);
+    closeUserMenu();
+    document.body.classList.remove("authenticated");
+    gate.style.display="flex";
+    gate.setAttribute("aria-hidden","false");
+    id.value="";
+    pw.value="";
+    err.textContent="";
+    id.focus();
+  });
+  document.addEventListener("click",e=>{if(userMenuWrap && !userMenuWrap.contains(e.target)) closeUserMenu();});
   eye.addEventListener("click",()=>{ const show=pw.type==="password"; pw.type=show?"text":"password"; eye.textContent=show?"◉":"◌"; eye.setAttribute("aria-label",show?"Hide password":"Show password"); });
   form.addEventListener("submit",async e=>{
     e.preventDefault(); err.textContent="";
