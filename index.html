@@ -3541,11 +3541,10 @@ document.addEventListener("click",function(e){
   function setLoggedInUser(userId){
     const raw=String(userId||"").trim();
     if(!raw) return;
-    const local=raw.split("@")[0];
-    const first=(local.split(/[._\-\s]+/).filter(Boolean)[0] || "User");
-    const name=first.charAt(0).toUpperCase()+first.slice(1).toLowerCase();
+    const name=raw;
     if(userNameEl) userNameEl.textContent=name;
-    if(userAvatarEl) userAvatarEl.textContent=name.charAt(0).toUpperCase();
+    const local=raw.split("@")[0].trim();
+    if(userAvatarEl) userAvatarEl.textContent=(local.charAt(0)||"U").toUpperCase();
   }
   function getStoredUser(){
     return sessionStorage.getItem(userSessionKey) || localStorage.getItem(userSessionKey) || "";
