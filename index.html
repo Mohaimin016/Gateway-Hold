@@ -3548,12 +3548,22 @@ document.addEventListener("click",function(e){
     return sessionStorage.getItem(userSessionKey) || localStorage.getItem(userSessionKey) || "";
   }
   function unlock(userId){
-    setLoggedInUser(userId || getStoredUser());
+    const authenticatedUser=String(userId || getStoredUser()).trim();
+    if(!authenticatedUser) return false;
+    setLoggedInUser(authenticatedUser);
     gate.style.display="none";
     gate.setAttribute("aria-hidden","true");
     document.body.classList.add("authenticated");
+    return true;
   }
-  unlock();
+  const storedSessionUser=getStoredUser();
+  const hasStoredSession=sessionStorage.getItem(sessionKey)==="1" || localStorage.getItem(sessionKey)==="1";
+  if(hasStoredSession && storedSessionUser){
+    unlock(storedSessionUser);
+  }else if(hasStoredSession){
+    sessionStorage.removeItem(sessionKey);
+    localStorage.removeItem(sessionKey);
+  }
   eye.addEventListener("click",()=>{ const show=pw.type==="password"; pw.type=show?"text":"password"; eye.textContent=show?"◉":"◌"; eye.setAttribute("aria-label",show?"Hide password":"Show password"); });
   form.addEventListener("submit",async e=>{
     e.preventDefault(); err.textContent="";
