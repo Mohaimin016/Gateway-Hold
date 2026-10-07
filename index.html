@@ -3539,8 +3539,11 @@ document.addEventListener("click",function(e){
   const userNameEl=document.getElementById("loggedInUserName");
   const userAvatarEl=document.getElementById("loggedInUserAvatar");
   function setLoggedInUser(userId){
-    const name=String(userId||"").trim();
-    if(!name) return;
+    const raw=String(userId||"").trim();
+    if(!raw) return;
+    const local=raw.split("@")[0];
+    const first=(local.split(/[._\-\s]+/).filter(Boolean)[0] || "User");
+    const name=first.charAt(0).toUpperCase()+first.slice(1).toLowerCase();
     if(userNameEl) userNameEl.textContent=name;
     if(userAvatarEl) userAvatarEl.textContent=name.charAt(0).toUpperCase();
   }
