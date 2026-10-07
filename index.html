@@ -2153,7 +2153,7 @@ body.dark-neumorphic .user{
   <span class="badge">1</span>
 </button>
 <button class="control user" id="userMenuButton" type="button" aria-label="User menu" aria-haspopup="menu" aria-expanded="false">
-  <span class="avatar">N</span><span class="user-name">User</span>
+  <span class="avatar" id="loggedInUserAvatar">U</span><span class="user-name" id="loggedInUserName">User</span>
   <svg class="user-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7 5 5 5-5"/></svg>
 </button>
 </div>
@@ -3535,8 +3535,25 @@ document.addEventListener("click",function(e){
   const gate=document.getElementById("loginGate"), form=document.getElementById("loginForm"), id=document.getElementById("loginId"), pw=document.getElementById("loginPassword"), err=document.getElementById("loginError"), eye=document.getElementById("loginEye"), remember=document.getElementById("rememberLogin");
   if(!gate||!form) return;
   const sessionKey="fedexOpsLogin";
-  function unlock(){ gate.style.display="none"; gate.setAttribute("aria-hidden","true"); document.body.classList.add("authenticated"); }
-  if(sessionStorage.getItem(sessionKey)==="1" || localStorage.getItem(sessionKey)==="1") unlock();
+  const userSessionKey="fedexOpsLoginUser";
+  const userNameEl=document.getElementById("loggedInUserName");
+  const userAvatarEl=document.getElementById("loggedInUserAvatar");
+  function setLoggedInUser(userId){
+    const name=String(userId||"").trim();
+    if(!name) return;
+    if(userNameEl) userNameEl.textContent=name;
+    if(userAvatarEl) userAvatarEl.textContent=name.charAt(0).toUpperCase();
+  }
+  function getStoredUser(){
+    return sessionStorage.getItem(userSessionKey) || localStorage.getItem(userSessionKey) || "";
+  }
+  function unlock(userId){
+    setLoggedInUser(userId || getStoredUser());
+    gate.style.display="none";
+    gate.setAttribute("aria-hidden","true");
+    document.body.classList.add("authenticated");
+  }
+  unlock();
   eye.addEventListener("click",()=>{ const show=pw.type==="password"; pw.type=show?"text":"password"; eye.textContent=show?"◉":"◌"; eye.setAttribute("aria-label",show?"Hide password":"Show password"); });
   form.addEventListener("submit",async e=>{
     e.preventDefault(); err.textContent="";
@@ -3549,8 +3566,17 @@ document.addEventListener("click",function(e){
       const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({userId,password})});
       const data=await res.json().catch(()=>({}));
       if(!res.ok || !data.ok) throw new Error(data.error || "Invalid User ID or password.");
-      if(remember.checked) localStorage.setItem(sessionKey,"1"); else sessionStorage.setItem(sessionKey,"1");
-      unlock();
+      const authenticatedUser=data.user?.userId || userId;
+      if(remember.checked){
+        localStorage.setItem(sessionKey,"1");
+        localStorage.setItem(userSessionKey,authenticatedUser);
+        sessionStorage.removeItem(userSessionKey);
+      }else{
+        sessionStorage.setItem(sessionKey,"1");
+        sessionStorage.setItem(userSessionKey,authenticatedUser);
+        localStorage.removeItem(userSessionKey);
+      }
+      unlock(authenticatedUser);
       pw.value="";
     }catch(error){
       err.textContent=error.message || "Unable to sign in.";
