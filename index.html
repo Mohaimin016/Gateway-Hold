@@ -3029,17 +3029,45 @@ function drawCharts(rows){
     {label:"24–48 hours",rows:holdRows.filter(r=>holdAgeMinutes(r)>=1440&&holdAgeMinutes(r)<2880)},
     {label:"Over 48 hours",rows:holdRows.filter(r=>holdAgeMinutes(r)>=2880)}
   ];
+  // Build reason-based categories independently of the scan-derived Gateway HOLD status.
+  // A reason such as "Hold for Fog" must remain visible even if scan milestones do not
+  // satisfy the operational Gateway HOLD definition above.
+  const reasonGroups=[];
+  [
+    {field:"Gateway Hold Reasons",source:"Gateway"},
+    {field:"BD HUB hold Reasons",source:"HUB"}
+  ].forEach(({field,source})=>{
+    const grouped=new Map();
+    rows.forEach(r=>{
+      const reason=String(r[field]||"").trim();
+      if(!reason) return;
+      const key=reason.toLocaleLowerCase();
+      if(!grouped.has(key)) grouped.set(key,{reason,rows:[]});
+      grouped.get(key).rows.push(r);
+    });
+    grouped.forEach(group=>{
+      reasonGroups.push({
+        label:source+": "+group.reason,
+        rows:group.rows,
+        pct:rows.length ? (group.rows.length/rows.length*100).toFixed(1) : "0.0",
+        category:true,
+        type:"hold-reason"
+      });
+    });
+  });
+  reasonGroups.sort((a,b)=>b.rows.length-a.rows.length || a.label.localeCompare(b.label));
   const holdSummary=[
     ...byGateway,
-    ...ageBuckets.map(x=>({...x,type:"gateway-hold"}))
+    ...ageBuckets.map(x=>({...x,type:"gateway-hold"})),
+    ...reasonGroups
   ];
   $("gatewayPerformance").innerHTML=`
-    <div class="hold-summary-note">Gateway HOLD means Gateway In is recorded, but Gateway Out and Delivered are missing. Age is calculated from Gateway In.</div>
+    <div class="hold-summary-note">Gateway HOLD means Gateway In is recorded, but Gateway Out and Delivered are missing. Age is calculated from Gateway In. Hold-reason categories are counted directly from the uploaded/source data and their percentage is based on all currently filtered AWB records.</div>
     <div class="hold-summary-grid">
       ${holdSummary.map(x=>`<button type="button" class="hold-summary-item" data-hold-filter="${safe(x.label)}">
         <span class="hold-summary-label">${safe(x.label)}</span>
         <strong class="hold-summary-count">${fmt(x.rows.length)}</strong>
-        <span class="hold-summary-hint">Click to view shipments</span>
+        <span class="hold-summary-hint">${x.category ? `${x.pct}% of total AWBs · click to view` : "Click to view shipments"}</span>
       </button>`).join("")}
     </div>`;
   $("gatewayPerformance").querySelectorAll("[data-hold-filter]").forEach((el,i)=>{
