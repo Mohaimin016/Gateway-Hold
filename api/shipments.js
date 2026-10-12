@@ -33,6 +33,7 @@ function bool(v) {
 function normalize(row) {
   return {
     awb: clean(row.awb ?? row.AWB),
+    country: clean(row.country ?? row.Country ?? row.country_code)?.toUpperCase() || null,
     flight_name: clean(row.flight_name ?? row['Flight Name'] ?? row.flight),
     customer_name: clean(row.customer_name ?? row['Customer Name'] ?? row.customer),
     wsc: clean(row.wsc ?? row.WSC),
@@ -46,7 +47,10 @@ function normalize(row) {
     delivered: clean(row.delivered ?? row.Delivered ?? row.pod),
     genesis_ok: bool(row.genesis_ok ?? row['Genesis OK']),
     genesis_status: clean(row.genesis_status ?? row['Genesis Status']),
-    gateway: clean(row.gateway ?? row.Gateway ?? row.gateway_code)?.toUpperCase() || null
+    gateway: clean(row.gateway ?? row.Gateway ?? row.gateway_code)?.toUpperCase() || null,
+    stat_14: clean(row.stat_14 ?? row['STAT 14'] ?? row.stat14),
+    bd_hub_hold_reason: clean(row.bd_hub_hold_reason ?? row['BD HUB hold Reasons'] ?? row['BD HUB Hold Reasons']),
+    gateway_hold_reason: clean(row.gateway_hold_reason ?? row['Gateway Hold Reasons'] ?? row['Gatway hold reasons'])
   };
 }
 
@@ -74,9 +78,9 @@ export default async function handler(req, res) {
 
       const rows = await sql`
         SELECT
-          awb, flight_name, customer_name, wsc, wt, shipper_type, ship_type,
+          awb, country, flight_name, customer_name, wsc, wt, shipper_type, ship_type,
           pickup_date, stat_77, gateway_in, gateway_out, delivered,
-          genesis_ok, genesis_status, gateway
+          genesis_ok, genesis_status, gateway, stat_14, bd_hub_hold_reason, gateway_hold_reason
         FROM shipments
         WHERE (${gateway || null}::text IS NULL OR gateway = ${gateway || null})
           AND (${flight || null}::text IS NULL OR flight_name = ${flight || null})
@@ -100,7 +104,7 @@ export default async function handler(req, res) {
       if (!Array.isArray(incoming)) return json(res, 400, { error: 'Expected {"shipments":[...]}.' });
       if (incoming.length > 5000) return json(res, 413, { error: 'Maximum 5,000 shipments per request.' });
 
-      const normalizedRows = incoming.map(normalize).filter(r => r.awb);
+      const normalizedRows = incoming.map(normalize).filter(r => r.awb && !r.stat_14);
       if (!normalizedRows.length) return json(res, 400, { error: 'No valid shipment rows with AWB were supplied.' });
 
       // PostgreSQL ON CONFLICT DO UPDATE requires the proposed rows to be unique
@@ -115,16 +119,17 @@ export default async function handler(req, res) {
       const payload = JSON.stringify(rows);
       await sql`
         INSERT INTO shipments (
-          awb, flight_name, customer_name, wsc, wt, shipper_type, ship_type,
+          awb, country, flight_name, customer_name, wsc, wt, shipper_type, ship_type,
           pickup_date, stat_77, gateway_in, gateway_out, delivered,
-          genesis_ok, genesis_status, gateway, updated_at
+          genesis_ok, genesis_status, gateway, stat_14, bd_hub_hold_reason, gateway_hold_reason, updated_at
         )
         SELECT
-          x.awb, x.flight_name, x.customer_name, x.wsc, x.wt, x.shipper_type, x.ship_type,
+          x.awb, x.country, x.flight_name, x.customer_name, x.wsc, x.wt, x.shipper_type, x.ship_type,
           x.pickup_date, x.stat_77, x.gateway_in, x.gateway_out, x.delivered,
-          x.genesis_ok, x.genesis_status, x.gateway, CURRENT_TIMESTAMP
+          x.genesis_ok, x.genesis_status, x.gateway, x.stat_14, x.bd_hub_hold_reason, x.gateway_hold_reason, CURRENT_TIMESTAMP
         FROM jsonb_to_recordset(${payload}::jsonb) AS x(
           awb text,
+          country text,
           flight_name text,
           customer_name text,
           wsc text,
@@ -138,9 +143,13 @@ export default async function handler(req, res) {
           delivered timestamp,
           genesis_ok boolean,
           genesis_status text,
-          gateway text
+          gateway text,
+          stat_14 text,
+          bd_hub_hold_reason text,
+          gateway_hold_reason text
         )
         ON CONFLICT (awb) DO UPDATE SET
+          country = EXCLUDED.country,
           flight_name = EXCLUDED.flight_name,
           customer_name = EXCLUDED.customer_name,
           wsc = EXCLUDED.wsc,
@@ -155,6 +164,9 @@ export default async function handler(req, res) {
           genesis_ok = EXCLUDED.genesis_ok,
           genesis_status = EXCLUDED.genesis_status,
           gateway = EXCLUDED.gateway,
+          stat_14 = EXCLUDED.stat_14,
+          bd_hub_hold_reason = EXCLUDED.bd_hub_hold_reason,
+          gateway_hold_reason = EXCLUDED.gateway_hold_reason,
           updated_at = CURRENT_TIMESTAMP
       `;
       const upserted = rows.length;
