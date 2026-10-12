@@ -1568,6 +1568,19 @@ body.soft-neumorphic .theme-control select{font-weight:800}
 
 </style>
 <style id="final-date-label-theme-fix">
+/* FINAL FIX: Login gate must disappear completely after successful authentication. */
+body.authenticated .login-gate{
+  display:none !important;
+  visibility:hidden !important;
+  opacity:0 !important;
+  pointer-events:none !important;
+}
+body.authenticated #dashboardApp{
+  display:grid !important;
+  visibility:visible !important;
+  opacity:1 !important;
+}
+
 /* FINAL FIX: From/To labels must never inherit the forced white date-input surface. */
 body:not(.soft-neumorphic) .topbar .control.date > span{
   background:transparent !important;
@@ -3676,9 +3689,19 @@ document.addEventListener("click",function(e){
     const authenticatedUser=String(userId || getStoredUser()).trim();
     if(!authenticatedUser) return false;
     setLoggedInUser(authenticatedUser);
+    gate.hidden=true;
     gate.style.display="none";
     gate.setAttribute("aria-hidden","true");
+    gate.style.visibility="hidden";
+    gate.style.opacity="0";
+    gate.style.pointerEvents="none";
     document.body.classList.add("authenticated");
+    const app=document.getElementById("dashboardApp");
+    if(app){
+      app.style.display="";
+      app.style.visibility="visible";
+      app.style.opacity="1";
+    }
     return true;
   }
   const storedSessionUser=getStoredUser();
