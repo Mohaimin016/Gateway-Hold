@@ -3121,7 +3121,11 @@ function openDetails(name, rows){
 
   const keys = [];
   preferred.forEach(k=>{
-    if(rows.some(r=>Object.prototype.hasOwnProperty.call(r,k)) && !keys.includes(k)) keys.push(k);
+    // Gateway Hold Time is calculated from timestamps, not stored as a source field.
+    // Always include this computed column in the popup.
+    if(k==="Gateway Hold Time" || rows.some(r=>Object.prototype.hasOwnProperty.call(r,k))){
+      if(!keys.includes(k)) keys.push(k);
+    }
   });
   rows.forEach(r=>{
     Object.keys(r).forEach(k=>{
