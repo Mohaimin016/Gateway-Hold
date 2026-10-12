@@ -3020,12 +3020,28 @@ function render(){
 }
 
 
+function gatewayHoldTime(r){
+  const start=parseDashboardDate(r && r["Gateway In"]);
+  if(!start || !isValidScan(r["Gateway In"])) return "";
+  const end=isValidScan(r["Gateway out"]) ? parseDashboardDate(r["Gateway out"]) : new Date();
+  if(!end || end < start) return "";
+  const totalMinutes=Math.floor((end-start)/60000);
+  if(totalMinutes < 1440){
+    const hours=Math.floor(totalMinutes/60);
+    const minutes=totalMinutes%60;
+    return hours ? (minutes ? hours+"h "+minutes+"m" : hours+"h") : minutes+"m";
+  }
+  const days=Math.floor(totalMinutes/1440);
+  const hours=Math.floor((totalMinutes%1440)/60);
+  return hours ? days+"d "+hours+"h" : days+"d";
+}
+
 function renderVirtualDetailTable(rows){
   const body=$("detailBody");
   const rowH=34;
   const viewportH=Math.min(window.innerHeight*0.62,620);
   const overscan=12;
-  const headers=["Tracking","Flight","Customer","WSC","Weight","Shipper Type","Ship Type","STAT-77","Gateway In","Gateway Out","Delivered"];
+  const headers=["Tracking","Flight","Customer","WSC","Weight","Shipper Type","Ship Type","STAT-77","Gateway In","Gateway Out","Gateway Hold Time","Delivered"];
 
   body.innerHTML=`
     <div class="detail-note">Showing all ${fmt(rows.length)} matching records. Scroll to browse all AWB.</div>
@@ -3059,6 +3075,7 @@ function renderVirtualDetailTable(rows){
         <td title="${safe(r["STAT-77(HUB out)"])}">${safe(r["STAT-77(HUB out)"])}</td>
         <td title="${safe(r["Gateway In"])}">${safe(r["Gateway In"])}</td>
         <td title="${safe(r["Gateway out"])}">${safe(r["Gateway out"])}</td>
+        <td title="${safe(gatewayHoldTime(r))}">${safe(gatewayHoldTime(r))}</td>
         <td title="${safe(r.Delivered)}">${safe(r.Delivered)}</td>
       </tr>`;
     }
@@ -3098,7 +3115,7 @@ function openDetails(name, rows){
      Show the important operational fields first, then any additional fields. */
   const preferred = [
     "awb","Flight Name","Gateway","pickup_date",
-    "STAT-77(HUB out)","Gateway In","Gateway out","Delivered",
+    "STAT-77(HUB out)","Gateway In","Gateway out","Gateway Hold Time","Delivered",
     "Genesis Status","customer_name","wsc","wt","shipper_type","ship_type"
   ];
 
@@ -3113,6 +3130,7 @@ function openDetails(name, rows){
   });
 
   const displayName = k => ({
+    "Gateway Hold Time":"Gateway Hold Time",
     "awb":"AWB",
     "Flight Name":"Flight",
     "pickup_date":"Pickup Date",
@@ -3128,7 +3146,8 @@ function openDetails(name, rows){
     "ship_type":"Shipment Type"
   }[k] || k);
 
-  const cell = v => {
+  const cell = (v, key, row) => {
+    if(key==="Gateway Hold Time") return safe(gatewayHoldTime(row));
     if(v===undefined || v===null || v==="") return "";
     if(v instanceof Date) return v.toLocaleString();
     return safe(String(v));
@@ -3143,7 +3162,7 @@ function openDetails(name, rows){
       <table class="detail-table">
         <thead><tr>${keys.map(k=>`<th>${safe(displayName(k))}</th>`).join("")}</tr></thead>
         <tbody id="detailRows">
-          ${rows.map(r=>`<tr>${keys.map(k=>`<td>${cell(r[k])}</td>`).join("")}</tr>`).join("")}
+          ${rows.map(r=>`<tr>${keys.map(k=>`<td>${cell(r[k],k,r)}</td>`).join("")}</tr>`).join("")}
         </tbody>
       </table>
     </div>`;
