@@ -709,6 +709,17 @@ body.soft-neumorphic .operations-lower .exception-hint{
 .gateway-num small{font-size:10px;font-weight:900;color:inherit;opacity:1;margin-left:2px}
 
 
+/* Gateway HOLD reason summary replaces the old performance chart. */
+.hold-summary-note{font-size:12px;line-height:1.5;color:var(--muted,#8793aa);margin:0 0 10px}
+.hold-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.hold-summary-item{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:12px;border:1px solid rgba(130,150,190,.22);border-radius:13px;background:rgba(120,140,190,.07);color:inherit;cursor:pointer;min-width:0}
+.hold-summary-item:hover{border-color:rgba(45,217,255,.65);transform:translateY(-1px)}
+.hold-summary-label{font-size:12px;font-weight:750}
+.hold-summary-count{font-size:25px;line-height:1.15;font-weight:900}
+.hold-summary-hint{font-size:10px;opacity:.72}
+body.soft-neumorphic .hold-summary-item{background:#f5f7fb;border-color:#dce2eb;color:#111827}
+@media(max-width:600px){.hold-summary-grid{grid-template-columns:1fr 1fr}.hold-summary-item{padding:9px}.hold-summary-count{font-size:22px}}
+
 /* Gateway Performance: ensure both DWC and SIN blocks are fully visible. */
 .gateway-performance{
   display:flex;
@@ -2199,8 +2210,8 @@ body.dark-neumorphic .user{
 </div>
 <div class="card panel lower-panel">
 <div class="panelHead">
-<h2>◉  Gateway Performance</h2>
-<span class="view">SIN / DWC</span>
+<h2>⚠  Gateway Hold Reasons Summary</h2>
+<span class="view">Derived from scan milestones</span>
 </div>
 <div class="gateway-performance" id="gatewayPerformance"></div>
 </div>
@@ -2990,17 +3001,42 @@ function drawCharts(rows){
     return {g,base,gi,go,gh};
   });
 
-  $("gatewayPerformance").innerHTML=gatewayRows.map(x=>{
-    const base=Math.max(1,x.base);
-    return `<div class="gateway-block">
-      <div class="gateway-name">${x.g} <span style="font-size:10px;font-weight:700;color:#7a89a5">· ${fmt(x.base)} records</span></div>
-      <div class="gateway-line"><span>In</span><div class="gateway-track"><div class="gateway-fill" style="width:${x.gi/base*100}%;background:#2dd9ff"></div></div><div class="gateway-num">${fmt(x.gi)} <small>(${(x.gi/base*100).toFixed(1)}%)</small></div></div>
-      <div class="gateway-line"><span>Out</span><div class="gateway-track"><div class="gateway-fill" style="width:${x.go/base*100}%;background:#20db8d"></div></div><div class="gateway-num">${fmt(x.go)} <small>(${(x.go/base*100).toFixed(1)}%)</small></div></div>
-      <div class="gateway-line"><span>Hold</span><div class="gateway-track"><div class="gateway-fill" style="width:${x.gh/base*100}%;background:#e05a8a"></div></div><div class="gateway-num">${fmt(x.gh)} <small>(${(x.gh/base*100).toFixed(1)}%)</small></div></div>
+  const holdRows=rows.filter(r=>isValidScan(r["Gateway In"])&&!isValidScan(r["Gateway out"])&&!isValidScan(r["Delivered"]));
+  const holdAgeMinutes=r=>{
+    const entered=parseDashboardDate(r["Gateway In"]);
+    return entered ? Math.max(0,(Date.now()-entered.getTime())/60000) : 0;
+  };
+  const byGateway=["DWC","SIN"].map(g=>({
+    label:g+" Gateway HOLD",
+    rows:holdRows.filter(r=>String(r.Gateway||"").trim().toUpperCase()===g),
+    type:"gateway-hold"
+  }));
+  const ageBuckets=[
+    {label:"Under 24 hours",rows:holdRows.filter(r=>holdAgeMinutes(r)<1440)},
+    {label:"24–48 hours",rows:holdRows.filter(r=>holdAgeMinutes(r)>=1440&&holdAgeMinutes(r)<2880)},
+    {label:"Over 48 hours",rows:holdRows.filter(r=>holdAgeMinutes(r)>=2880)}
+  ];
+  const holdSummary=[
+    ...byGateway,
+    ...ageBuckets.map(x=>({...x,type:"gateway-hold"}))
+  ];
+  $("gatewayPerformance").innerHTML=`
+    <div class="hold-summary-note">Gateway HOLD means Gateway In is recorded, but Gateway Out and Delivered are missing. Age is calculated from Gateway In.</div>
+    <div class="hold-summary-grid">
+      ${holdSummary.map(x=>`<button type="button" class="hold-summary-item" data-hold-filter="${safe(x.label)}">
+        <span class="hold-summary-label">${safe(x.label)}</span>
+        <strong class="hold-summary-count">${fmt(x.rows.length)}</strong>
+        <span class="hold-summary-hint">Click to view shipments</span>
+      </button>`).join("")}
     </div>`;
-  }).join("");
+  $("gatewayPerformance").querySelectorAll("[data-hold-filter]").forEach((el,i)=>{
+    el.addEventListener("click",()=>{
+      const item=holdSummary[i];
+      openDetails(item.label,item.rows);
+    });
+  });
 
-  const gatewayHold=rows.filter(r=>isValidScan(r["Gateway In"])&&!isValidScan(r["Gateway out"])&&!isValidScan(r["Delivered"]));
+  const gatewayHold=rows.filter(r=>isValidScan(r["Gateway In"])&&!isValidScan(r["Gateway out"])&&!isValidScan(r["Delivered"]));(r=>isValidScan(r["Gateway In"])&&!isValidScan(r["Gateway out"])&&!isValidScan(r["Delivered"]));
   const hubHold=rows.filter(r=>isValidScan(r.pickup_date)&&!isValidScan(r["STAT-77(HUB out)"])&&!isValidScan(r["Gateway In"]));
   const gatewayOutPending=rows.filter(r=>isValidScan(r["Gateway In"])&&!isValidScan(r["Gateway out"]));
   const genesisIncomplete=rows.filter(r=>r["Genesis OK"]!==true);
@@ -3626,8 +3662,9 @@ document.addEventListener("click",function(e){
   function setLoggedInUser(userId){
     const raw=String(userId||"").trim();
     if(!raw) return;
-    const name=raw;
+    const name=raw || "User";
     if(userNameEl) userNameEl.textContent=name;
+    if(userNameEl) userNameEl.title=name;
     const local=raw.split("@")[0].trim();
     if(userAvatarEl) userAvatarEl.textContent=(local.charAt(0)||"U").toUpperCase();
     syncUserMenu(raw);
