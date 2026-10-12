@@ -1256,6 +1256,10 @@ body.fast-scrolling canvas{
 /* Slightly tighter popup chrome so the data gets more space */
 .detail-body{padding:12px 14px 16px}
 .detail-note{margin-bottom:9px;font-size:10px}
+.detail-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.detail-toolbar .detail-search{flex:1;min-width:180px}
+.detail-export-btn{border:1px solid rgba(93,171,255,.35);background:linear-gradient(135deg,rgba(36,115,255,.32),rgba(118,80,255,.32));color:#eaf1ff;border-radius:8px;padding:7px 11px;font-weight:700;font-size:10px;cursor:pointer}
+.detail-export-btn:hover{filter:brightness(1.12)}
 </style>
 <style>
 .bottom .panel{content-visibility:auto;contain-intrinsic-size:272px;}
@@ -2304,26 +2308,27 @@ function normalizeApiShipment(row){
   const genesisText=cleanUploadValue(genesisRaw);
   const gl=String(genesisText).trim().toLowerCase();
   const derivedGenesisOK=!!genesisText && !["false","no","not ok","pending","incomplete","0","0.0","n/a","na","null","#n/a"].includes(gl);
-
   let flight=cleanUploadValue(apiShipmentValue(row,["flight_name","Flight Name","flight","Flight"]));
   if(flight.includes("|")) flight=flight.split("|").map(x=>String(x).trim()).filter(Boolean).pop()||"";
-
+  const country=cleanUploadValue(apiShipmentValue(row,["country","Country","destination_country"])).toUpperCase();
+  const gatewayIn=normalizeDateValue(apiShipmentValue(row,["gateway_in","Gateway In"]));
+  let gatewayOut=normalizeDateValue(apiShipmentValue(row,["gateway_out","Gateway out"]));
+  if((country==="AE" || country==="SG") && isValidScan(gatewayIn)) gatewayOut=gatewayIn;
+  const gateway=cleanUploadValue(apiShipmentValue(row,["gateway","Gateway","gateway_code"])).toUpperCase() || inferGateway(country,gatewayIn,gatewayOut);
   return {
-    awb:cleanUploadValue(apiShipmentValue(row,["awb","AWB"])),
-    "Flight Name":flight,
+    awb:cleanUploadValue(apiShipmentValue(row,["awb","AWB"])), country, "Flight Name":flight,
     customer_name:cleanUploadValue(apiShipmentValue(row,["customer_name","Customer Name","customer"])),
-    wsc:cleanUploadValue(apiShipmentValue(row,["wsc","WSC"])),
-    wt:apiShipmentValue(row,["wt","weight","Weight"]),
+    wsc:cleanUploadValue(apiShipmentValue(row,["wsc","WSC","Service Center"])), wt:apiShipmentValue(row,["wt","weight","Weight"]),
     shipper_type:cleanUploadValue(apiShipmentValue(row,["shipper_type","Shipper Type"])),
     ship_type:cleanUploadValue(apiShipmentValue(row,["ship_type","Ship Type","shipment_type"])),
     pickup_date:normalizeDateValue(apiShipmentValue(row,["pickup_date","Pickup Date","pickup"])),
     "STAT-77(HUB out)":normalizeDateValue(apiShipmentValue(row,["stat_77","STAT-77(HUB out)","stat77","hub_out"])),
-    "Gateway In":normalizeDateValue(apiShipmentValue(row,["gateway_in","Gateway In"])),
-    "Gateway out":normalizeDateValue(apiShipmentValue(row,["gateway_out","Gateway out"])),
+    "Gateway In":gatewayIn, "Gateway out":gatewayOut,
     Delivered:normalizeDateValue(apiShipmentValue(row,["delivered","Delivered","pod"])),
-    "Genesis OK":hasExplicitBoolean ? explicitGenesisOK : derivedGenesisOK,
-    "Genesis Status":genesisText,
-    Gateway:cleanUploadValue(apiShipmentValue(row,["gateway","Gateway","gateway_code"])).toUpperCase()
+    "Genesis OK":hasExplicitBoolean ? explicitGenesisOK : derivedGenesisOK, "Genesis Status":genesisText,
+    Gateway:gateway,
+    "BD HUB hold Reasons":cleanUploadValue(apiShipmentValue(row,["bd_hub_hold_reason","BD HUB hold Reasons","BD HUB Hold Reasons"])),
+    "Gateway Hold Reasons":cleanUploadValue(apiShipmentValue(row,["gateway_hold_reason","Gateway Hold Reasons","Gatway hold reasons","Gateway hold reasons"]))
   };
 }
 
@@ -2573,9 +2578,26 @@ function parseDashboardDate(v){
 }
 function excelDateToText(v){ return normalizeDateValue(v); }
 
+function hasStat14Value(v){
+  if(v===undefined || v===null) return false;
+  if(v instanceof Date) return !isNaN(v.getTime()) && v.getFullYear()>1900;
+  if(typeof v==="number") return isFinite(v) && v>0;
+  const s=String(v).trim().toLowerCase();
+  return !!s && !["0","0.0","0.00","-","n/a","na","null","undefined","#n/a"].includes(s);
+}
+function inferGateway(country, gatewayIn, gatewayOut){
+  const c=String(country||"").trim().toUpperCase();
+  if(c==="AE") return "DWC";
+  if(c==="SG") return "SIN";
+  const text=[gatewayIn,gatewayOut].map(v=>String(v||"").toUpperCase()).join(" ");
+  if(/(?:-DWC\b|DWCIP|DWCH)/.test(text)) return "DWC";
+  if(/(?:-SIN\b|SINIP|SINA)/.test(text)) return "SIN";
+  return "";
+}
 function mapUploadedRows(rows){
   return rows.map(r=>{
     const awb=cleanUploadValue(firstField(r,["awb","AWB","AWB No","AWB Number","Airway Bill","Airwaybill"]));
+    const country=cleanUploadValue(firstField(r,["country","Country","Destination Country","Country Code"])).toUpperCase();
 
     let flight=cleanUploadValue(firstField(r,["Flight","Flight Name","Flight No","Flight Number"]));
     if(flight.includes("|")) flight=flight.split("|").map(x=>String(x).trim()).filter(Boolean).pop()||"";
@@ -2596,7 +2618,7 @@ function mapUploadedRows(rows){
       ["Gateway In","Gateway IN","GatewayIn","Gateway Arrival","Gateway In Date","Gateway IN Date"],
       [["gateway","in"],["gateway","arrival"]]
     ));
-    const gatewayOut=normalizeDateValue(flexibleField(r,
+    let gatewayOut=normalizeDateValue(flexibleField(r,
       ["Gateway Out","Gateway out","Gateway OUT","GatewayOut","Gateway Out Date"],
       [["gateway","out"]]
     ));
@@ -2605,30 +2627,27 @@ function mapUploadedRows(rows){
       [["pod"],["delivered"],["delivery"]]
     ));
 
+    if((country==="AE" || country==="SG") && isValidScan(gatewayIn)) gatewayOut=gatewayIn;
+
     const genesis=cleanUploadValue(firstField(r,["Genesis","Genesis Date","Genesis Completion","Genesis Completed","Genesis Status","Genesis OK"]));
     const gl=String(genesis).trim().toLowerCase();
     const genesisOK=!!genesis && !["false","no","not ok","pending","incomplete","0","0.0","n/a","na","null","#n/a"].includes(gl);
 
-    const gateway=cleanUploadValue(firstField(r,["Gateway","Gateway Code","Gateway Location"])).toUpperCase();
+    const gateway=cleanUploadValue(firstField(r,["Gateway","Gateway Code","Gateway Location"])).toUpperCase() || inferGateway(country,gatewayIn,gatewayOut);
+    const stat14Raw=firstField(r,["STAT 14","STAT-14","STAT14","Stat 14","Stat-14"]);
+    const bdHubHoldReason=cleanUploadValue(firstField(r,["BD HUB hold Reasons","BD HUB Hold Reasons","BD HUB Hold Reason","BD HUB hold reason","BD HUB Reason"]));
+    const gatewayHoldReason=cleanUploadValue(firstField(r,["Gatway hold reasons","Gateway hold reasons","Gateway Hold Reasons","Gateway Hold Reason","Gateway hold reason"]));
+
+    if(hasStat14Value(stat14Raw)) return null;
 
     return {
-      awb,
-      "Flight Name":flight,
-      customer_name:customer,
-      wsc,
-      wt,
-      shipper_type:shipper,
-      ship_type:ship,
-      pickup_date:pickup,
-      "STAT-77(HUB out)":stat,
-      "Gateway In":gatewayIn,
-      "Gateway out":gatewayOut,
-      Delivered:pod,
-      "Genesis OK":genesisOK,
-      "Genesis Status":genesis,
-      Gateway:gateway
+      awb, country, "Flight Name":flight, customer_name:customer, wsc, wt,
+      shipper_type:shipper, ship_type:ship, pickup_date:pickup,
+      "STAT-77(HUB out)":stat, "Gateway In":gatewayIn, "Gateway out":gatewayOut,
+      Delivered:pod, "Genesis OK":genesisOK, "Genesis Status":genesis, Gateway:gateway,
+      "BD HUB hold Reasons":bdHubHoldReason, "Gateway Hold Reasons":gatewayHoldReason
     };
-  }).filter(r=>isValidScan(r.awb) || isValidScan(r.pickup_date));
+  }).filter(r=>r && (isValidScan(r.awb) || isValidScan(r.pickup_date)));
 }
 
 async function loadUploadedWorkbook(file){
@@ -3114,9 +3133,10 @@ function openDetails(name, rows){
   /* Keep the popup tied to the actual uploaded/reference data.
      Show the important operational fields first, then any additional fields. */
   const preferred = [
-    "awb","Flight Name","Gateway","pickup_date",
+    "awb","Flight Name","country","Gateway","pickup_date",
     "STAT-77(HUB out)","Gateway In","Gateway out","Gateway Hold Time","Delivered",
-    "Genesis Status","customer_name","wsc","wt","shipper_type","ship_type"
+    "Genesis Status","BD HUB hold Reasons","Gateway Hold Reasons",
+    "customer_name","wsc","wt","shipper_type","ship_type"
   ];
 
   const keys = [];
@@ -3135,6 +3155,7 @@ function openDetails(name, rows){
 
   const displayName = k => ({
     "Gateway Hold Time":"Gateway Hold Time",
+    "country":"Country",
     "awb":"AWB",
     "Flight Name":"Flight",
     "pickup_date":"Pickup Date",
@@ -3143,6 +3164,8 @@ function openDetails(name, rows){
     "Gateway out":"Gateway Out",
     "Delivered":"POD / Delivered",
     "Genesis Status":"Genesis Status",
+    "BD HUB hold Reasons":"BD HUB Hold Reason",
+    "Gateway Hold Reasons":"Gateway Hold Reason",
     "customer_name":"Customer",
     "wsc":"WSC",
     "wt":"Weight",
@@ -3161,6 +3184,7 @@ function openDetails(name, rows){
     <div class="detail-toolbar">
       <span class="detail-count">${fmt(rows.length)} records</span>
       <input id="detailSearch" class="detail-search" type="search" placeholder="Search popup data...">
+      <button id="detailExport" type="button" class="detail-export-btn">Export Excel</button>
     </div>
     <div class="detail-table-wrap">
       <table class="detail-table">
@@ -3181,6 +3205,28 @@ function openDetails(name, rows){
     });
   }
 
+  const exportBtn=$("detailExport");
+  if(exportBtn){
+    exportBtn.addEventListener("click",()=>{
+      try{
+        if(typeof XLSX==="undefined" || !XLSX.utils || !XLSX.writeFile) throw new Error("Excel export library is unavailable.");
+        const exportRows=rows.map(r=>{
+          const out={};
+          keys.forEach(k=>out[displayName(k)]=k==="Gateway Hold Time" ? gatewayHoldTime(r) : (r[k] ?? ""));
+          return out;
+        });
+        const ws=XLSX.utils.json_to_sheet(exportRows);
+        const wb=XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,ws,"Details");
+        const stamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
+        const filename=(name+"-"+stamp+".xlsx").replace(/[^a-zA-Z0-9._-]+/g,"_");
+        XLSX.writeFile(wb,filename);
+      }catch(err){
+        console.error("Popup Excel export:",err);
+        alert(err.message || "Unable to export popup data.");
+      }
+    });
+  }
   modal.classList.add("open");
   modal.setAttribute("aria-hidden","false");
 }
